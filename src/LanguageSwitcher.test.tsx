@@ -118,3 +118,85 @@ function renderMarkup() {
 
   return container.innerHTML
 }
+
+describe('LanguageSwitcher com várias instâncias', () => {
+  afterEach(() => {
+    delete (window as Window & { google?: unknown }).google
+    delete (window as Window & { componentLanguageSwitcherGoogleTranslateInit?: unknown }).componentLanguageSwitcherGoogleTranslateInit
+    delete (window as Window & { gt_translate_script?: unknown }).gt_translate_script
+  })
+
+  it('marca a raiz como notranslate para o Google não traduzir os nomes dos idiomas', () => {
+    renderMarkup()
+    const rootElement = container?.querySelector('.ls-root')
+    expect(rootElement?.classList.contains('notranslate')).toBe(true)
+    expect(rootElement?.getAttribute('translate')).toBe('no')
+  })
+
+  it('sincroniza o rótulo de todas as instâncias após uma troca confirmada', () => {
+    container = document.createElement('div')
+    document.body.appendChild(container)
+    root = createRoot(container)
+
+    act(() => {
+      root?.render(
+        <>
+          <div className="header"><LanguageSwitcher loadGoogleTranslate={false} translateTargetId="shared-target" /></div>
+          <div className="drawer"><LanguageSwitcher loadGoogleTranslate={false} translateTargetId="shared-target" /></div>
+        </>,
+      )
+    })
+
+    document.getElementById('shared-target')?.insertAdjacentHTML(
+      'beforeend',
+      '<select class="goog-te-combo"><option value="pt">Português</option><option value="es">Español</option></select>',
+    )
+
+    const header = container.querySelector('.header') as HTMLElement
+    const drawer = container.querySelector('.drawer') as HTMLElement
+    act(() => header.querySelector<HTMLButtonElement>('.ls-trigger')?.click())
+    const spanish = Array.from(header.querySelectorAll<HTMLButtonElement>('.ls-option'))
+      .find((button) => button.textContent?.includes('Español'))
+    act(() => spanish?.click())
+
+    expect(header.querySelector('.ls-trigger')?.textContent).toContain('Español')
+    expect(drawer.querySelector('.ls-trigger')?.textContent).toContain('Español')
+  })
+
+  it('inicializa o Google uma única vez por página e todas as instâncias usam o mesmo alvo', async () => {
+    const constructor = vi.fn(function (_options: unknown, targetId: string) {
+      document.getElementById(targetId)?.insertAdjacentHTML(
+        'beforeend',
+        '<select class="goog-te-combo"><option value="pt">Português</option><option value="en">English</option></select>',
+      )
+    })
+    ;(window as Window & { google?: unknown }).google = { translate: { TranslateElement: constructor } }
+
+    container = document.createElement('div')
+    document.body.appendChild(container)
+    root = createRoot(container)
+
+    await act(async () => {
+      root?.render(
+        <>
+          <div className="header"><LanguageSwitcher /></div>
+          <div className="drawer"><LanguageSwitcher /></div>
+        </>,
+      )
+    })
+
+    expect(constructor).toHaveBeenCalledTimes(1)
+    expect(document.querySelectorAll('.goog-te-combo')).toHaveLength(1)
+    expect(document.querySelectorAll('script[src*="translate.google.com"]')).toHaveLength(1)
+
+    const drawer = container.querySelector('.drawer') as HTMLElement
+    act(() => drawer.querySelector<HTMLButtonElement>('.ls-trigger')?.click())
+    const english = Array.from(drawer.querySelectorAll<HTMLButtonElement>('.ls-option'))
+      .find((button) => button.textContent?.includes('English'))
+    act(() => english?.click())
+
+    expect(document.querySelector<HTMLSelectElement>('.goog-te-combo')?.value).toBe('en')
+    expect(container.querySelector('.header .ls-trigger')?.textContent).toContain('English')
+    expect(drawer.querySelector('[role="alert"]')).toBeNull()
+  })
+})

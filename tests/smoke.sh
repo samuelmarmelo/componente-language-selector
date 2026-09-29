@@ -28,5 +28,12 @@ grep -q 'role="listbox"' src/LanguageSwitcher.tsx
 grep -q 'ls-permission-notice' src/LanguageSwitcher.tsx
 grep -q 'support.brave.com' src/LanguageSwitcher.tsx
 grep -q 'role="alert"' src/LanguageSwitcher.tsx
+grep -q 'notranslate' src/LanguageSwitcher.tsx
+grep -q 'translate="no"' src/LanguageSwitcher.tsx
+grep -q 'notifyLanguageApplied' src/LanguageSwitcher.tsx
+grep -q 'resolveTargetId' src/LanguageSwitcher.tsx
+
+# Versão vanilla (backup da implementação em produção).
+bash vanilla/tests/smoke.sh
 
 echo 'Smoke test do Language Switcher passou.'

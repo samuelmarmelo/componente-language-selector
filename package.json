@@ -21,6 +21,7 @@
     "build": "tsc -b && vite build",
     "test": "vitest run",
     "test:watch": "vitest",
+    "test:vanilla": "node --test vanilla/tests/language-switcher.test.mjs",
     "lint": "eslint src --ext .ts,.tsx --report-unused-disable-directives --max-warnings 0"
   },
   "peerDependencies": {
