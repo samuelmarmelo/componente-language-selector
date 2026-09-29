@@ -55,6 +55,32 @@ export const DEFAULT_LANGUAGES: LanguageOption[] = [
   { code: 'ja', label: '日本語', flag: jpFlag },
 ]
 
+/*
+ * Estado compartilhado entre instâncias na mesma página (header, drawer...).
+ * Fica em memória do módulo: não é evento global nem estado de conteúdo.
+ */
+type LanguageListener = (languageCode: string) => void
+const languageListeners = new Set<LanguageListener>()
+let sharedTargetId: string | null = null
+
+function notifyLanguageApplied(languageCode: string): void {
+  languageListeners.forEach((listener) => listener(languageCode))
+}
+
+/**
+ * Sem `translateTargetId`, a primeira instância montada é dona do alvo do
+ * Google; as demais reutilizam esse alvo. Assim o widget (e a restauração do
+ * idioma salvo no cookie) acontece uma única vez por página.
+ */
+function resolveTargetId(ownTargetId: string, hostTargetId?: string): string {
+  if (hostTargetId) return hostTargetId
+  if (sharedTargetId && typeof document !== 'undefined' && document.getElementById(sharedTargetId)) {
+    return sharedTargetId
+  }
+  sharedTargetId = ownTargetId
+  return ownTargetId
+}
+
 const FLAG_STYLE = {
   width: '20px',
   height: '14px',
@@ -81,7 +107,7 @@ export default function LanguageSwitcher({
   const rootRef = useRef<HTMLDivElement>(null)
   const optionRefs = useRef<Array<HTMLButtonElement | null>>([])
   const listId = useId().replace(/:/g, '')
-  const targetId = translateTargetId || `${listId}-google-translate-target`
+  const ownTargetId = translateTargetId || `${listId}-google-translate-target`
   const current = languages.find((language) => language.code === currentCode) ||
     languages.find((language) => language.code === defaultLanguage) ||
     languages[0]
@@ -92,14 +118,22 @@ export default function LanguageSwitcher({
   }, [defaultLanguage, languages])
 
   useEffect(() => {
+    const listener: LanguageListener = (code) => {
+      if (languages.some((language) => language.code === code)) setCurrentCode(code)
+    }
+    languageListeners.add(listener)
+    return () => { languageListeners.delete(listener) }
+  }, [languages])
+
+  useEffect(() => {
     if (!loadGoogleTranslate) return
     void ensureGoogleTranslate({
-      targetId,
+      targetId: resolveTargetId(ownTargetId, translateTargetId),
       pageLanguage,
       includedLanguages,
       scriptUrl: googleTranslateScriptUrl,
     })
-  }, [googleTranslateScriptUrl, includedLanguages, loadGoogleTranslate, pageLanguage, targetId])
+  }, [googleTranslateScriptUrl, includedLanguages, loadGoogleTranslate, ownTargetId, pageLanguage, translateTargetId])
 
   useEffect(() => {
     const handler = (event: MouseEvent) => {
@@ -116,6 +150,7 @@ export default function LanguageSwitcher({
 
   const select = useCallback((language: LanguageOption) => {
     const previousCode = currentCode
+    const targetId = resolveTargetId(ownTargetId, translateTargetId)
     setOpen(false)
     setPermissionNotice(false)
 
@@ -132,6 +167,7 @@ export default function LanguageSwitcher({
         writeGoogleTranslateLanguage(language.code)
         setCurrentCode(language.code)
         setPermissionNotice(false)
+        notifyLanguageApplied(language.code)
         onLanguageChange?.(language.code)
       }
       return applied
@@ -152,7 +188,7 @@ export default function LanguageSwitcher({
     }
 
     rollback()
-  }, [currentCode, defaultLanguage, googleTranslateScriptUrl, includedLanguages, loadGoogleTranslate, onLanguageChange, pageLanguage, targetId])
+  }, [currentCode, defaultLanguage, googleTranslateScriptUrl, includedLanguages, loadGoogleTranslate, onLanguageChange, ownTargetId, pageLanguage, translateTargetId])
 
   const handleTriggerKeyDown = (event: KeyboardEvent<HTMLButtonElement>) => {
     if (event.key === 'Escape') {
@@ -189,7 +225,12 @@ export default function LanguageSwitcher({
   if (!current) return null
 
   return (
-    <div ref={rootRef} className={`ls-root ${className}`.trim()} aria-label="Seletor de idioma">
+    <div
+      ref={rootRef}
+      className={`ls-root notranslate ${className}`.trim()}
+      translate="no"
+      aria-label="Seletor de idioma"
+    >
       <button
         type="button"
         className="ls-trigger"
@@ -241,7 +282,7 @@ export default function LanguageSwitcher({
         </div>
       )}
 
-      <div id={targetId} className="ls-google-translate-target" aria-hidden="true" />
+      <div id={ownTargetId} className="ls-google-translate-target" aria-hidden="true" />
 
       {permissionNotice && (
         <aside className="ls-permission-notice" role="alert" aria-live="assertive">
