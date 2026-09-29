@@ -15,7 +15,8 @@ A integração usa o widget de tradução de páginas do Google, que traduz o co
 | `src/styles.css` | Estilos isolados do seletor e ocultação apenas da UI auxiliar do Google Translate. |
 | `src/assets/flags/*.svg` | Flags autocontidas extraídas do Apogeo. |
 | `src/googleTranslate.test.ts` | Testes do contrato do adaptador e do isolamento contra outros selects. |
-| `tests/smoke.sh` | Lint, testes, build e bloqueio estático contra rotas/posts/filtros. |
+| `tests/smoke.sh` | Lint, testes, build e bloqueio estático contra rotas/posts/filtros; também roda o smoke da versão vanilla. |
+| `vanilla/` | Cópia sem framework da implementação em produção (JS, bootstrap, CSS, bandeiras e testes). Veja a seção Versão vanilla. |
 
 ## Instalação
 
@@ -46,7 +47,7 @@ Por padrão, `loadGoogleTranslate` é `true`. Nesse modo, o componente cria uma 
 />
 ```
 
-A inicialização é feita com `autoDisplay: false`, portanto a UI visível é somente o seletor customizado. O componente não usa o elemento global `#google_translate_element` do host: cada instância possui um alvo isolado e um ID próprio. Depois de instanciar `TranslateElement`, o adaptador espera até que o Google crie um `.goog-te-combo` populado. Se o script do host terminar de expor `window.google` depois da primeira tentativa, o polling reentra no inicializador; um marcador pendente recente evita construtores duplicados, mas marcadores antigos são tratados como estado parcial e recuperados. Só então aplica o idioma, atribui o valor ao select nativo e dispara dois eventos `change`, sequência usada pelo plugin para compatibilidade com o Website Translator em diferentes navegadores e versões. A UI React confirma o novo rótulo somente quando a aplicação ao combo retorna sucesso; em falha, limpa/restaura o cookie `googtrans` e mantém o idioma anterior visível.
+A inicialização é feita com `autoDisplay: false`, portanto a UI visível é somente o seletor customizado. O componente não usa o elemento global `#google_translate_element` do host: cada instância renderiza um alvo invisível com ID próprio, mas só a primeira instância montada inicializa o Google; as demais reutilizam esse alvo, então o `TranslateElement` (e a restauração do idioma salvo no cookie) acontece uma única vez por página. Depois de instanciar `TranslateElement`, o adaptador espera até que o Google crie um `.goog-te-combo` populado. Se o script do host terminar de expor `window.google` depois da primeira tentativa, o polling reentra no inicializador; um marcador pendente recente evita construtores duplicados, mas marcadores antigos são tratados como estado parcial e recuperados. Só então aplica o idioma, atribui o valor ao select nativo e dispara dois eventos `change`, sequência usada pelo plugin para compatibilidade com o Website Translator em diferentes navegadores e versões. A UI React confirma o novo rótulo somente quando a aplicação ao combo retorna sucesso, e então todas as instâncias da página passam a exibir o mesmo idioma; em falha, limpa/restaura o cookie `googtrans` e mantém o idioma anterior visível.
 
 Se o site já inicializa o Google Translate no `index.html`, o host pode manter essa responsabilidade e fornecer um alvo estável:
 
@@ -104,9 +105,27 @@ npm run lint
 npm test
 npm run build
 bash tests/smoke.sh
+npm run test:vanilla
 ```
 
-O pacote foi validado com lint ESLint, sete testes unitários do adaptador, dois testes de interação do componente, typecheck/declaration build e build Vite. O smoke test também bloqueia referências de produção a navegação por locale, filtros de posts e query strings, além de verificar a espera pelo combo, a sequência dupla de `change`, a tag singleton sem `async` e a API do host disponibilizada tardiamente.
+O pacote foi validado com lint ESLint, nove testes unitários do adaptador, seis testes de interação do componente, dez testes da versão vanilla (`npm run test:vanilla`), typecheck/declaration build e build Vite. O smoke test também bloqueia referências de produção a navegação por locale, filtros de posts e query strings, além de verificar a espera pelo combo, a sequência dupla de `change`, a tag singleton sem `async` e a API do host disponibilizada tardiamente.
+
+## Versão vanilla
+
+A pasta [`vanilla/`](vanilla/README.md) guarda, como backup, a implementação sem framework que está em produção no site samuelwebdesign: `language-switcher.js` (ES module sem imports), `google-translate-bootstrap.js`, `language-switcher.css`, as bandeiras SVG e os testes `node:test` + jsdom. O [README da pasta](vanilla/README.md) explica o uso, as origens liberadas na CSP, o contrato de ativação assíncrona e o contrato anti-filtro.
+
+```bash
+npm run test:vanilla
+bash vanilla/tests/smoke.sh
+```
+
+## Changelog
+
+### 2026-09-29
+
+- **Versão vanilla:** nova pasta `vanilla/` com a cópia da implementação em produção. Ela traz as correções do site: sucesso confirmado assim que o `.goog-te-combo` recebe o valor (a versão antiga esperava a classe `translated-*` no `<body>`, mas o Google a coloca no `<html>`, então a tradução era desfeita após 15 s e o aviso do Brave aparecia sem motivo); loader do Google injetado sob demanda; rótulo sincronizado em todas as instâncias; seletor marcado `notranslate`; idioma salvo restaurado uma única vez por página.
+- **React:** o rótulo agora é sincronizado em todas as instâncias da página; a raiz do seletor recebe `notranslate` e `translate="no"`; sem `translateTargetId`, o Google é inicializado uma única vez por página e as instâncias compartilham o alvo. A confirmação pelo combo já existia.
+- **Testes:** três testes novos do componente, dez testes da versão vanilla e novas verificações no smoke.
 
 ## Integração no Apogeo
 
